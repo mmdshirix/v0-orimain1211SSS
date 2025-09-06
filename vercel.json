@@ -1,0 +1,14 @@
+{
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/widget/:id",
+      "destination": "/widget/:id"
+    }
+  ]
+}
