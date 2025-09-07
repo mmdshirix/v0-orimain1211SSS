@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
+import { Badge } from "@/components/ui/badge"
 import {
   Save,
   Plus,
@@ -27,6 +28,13 @@ import {
   HelpCircle,
   ShoppingBag,
   Move,
+  Globe,
+  FileText,
+  Eye,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  ExternalLink,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import type { Chatbot, ChatbotFAQ, ChatbotProduct } from "@/lib/db"
@@ -44,11 +52,21 @@ const settingsSchema = z.object({
   welcome_message: z.string().min(1, "پیام خوشامدگویی الزامی است"),
   navigation_message: z.string(),
   knowledge_base_text: z.string().optional(),
+  knowledge_base_url: z.string().optional(),
+  store_url: z.string().optional(),
   stats_multiplier: z.number().min(0.1).max(100),
 })
 
 interface ChatbotSettingsFormProps {
   chatbot: Chatbot
+}
+
+interface KnowledgeBaseStatus {
+  isValidating: boolean
+  isValid: boolean | null
+  error: string | null
+  contentPreview: string | null
+  lastChecked: Date | null
 }
 
 export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProps) {
@@ -61,6 +79,13 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
   const [products, setProducts] = useState<Partial<ChatbotProduct>[]>([])
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+  const [kbStatus, setKbStatus] = useState<KnowledgeBaseStatus>({
+    isValidating: false,
+    isValid: null,
+    error: null,
+    contentPreview: null,
+    lastChecked: null,
+  })
   const { toast } = useToast()
 
   const form = useForm<z.infer<typeof settingsSchema>>({
@@ -77,16 +102,74 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
       welcome_message: chatbot.welcome_message || "",
       navigation_message: chatbot.navigation_message || "",
       knowledge_base_text: chatbot.knowledge_base_text || "",
+      knowledge_base_url: chatbot.knowledge_base_url || "",
+      store_url: chatbot.store_url || "",
       stats_multiplier: chatbot.stats_multiplier || 1.0,
     },
   })
 
   const statsMultiplier = form.watch("stats_multiplier")
+  const knowledgeBaseUrl = form.watch("knowledge_base_url")
 
   useEffect(() => {
     loadFaqs()
     loadProducts()
   }, [chatbot.id])
+
+  const validateKnowledgeBaseUrl = async (url: string) => {
+    if (!url || !url.trim()) {
+      setKbStatus({
+        isValidating: false,
+        isValid: null,
+        error: null,
+        contentPreview: null,
+        lastChecked: null,
+      })
+      return
+    }
+
+    setKbStatus((prev) => ({ ...prev, isValidating: true, error: null }))
+
+    try {
+      const response = await fetch("/api/knowledge-base/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setKbStatus({
+          isValidating: false,
+          isValid: true,
+          error: null,
+          contentPreview: data.preview || null,
+          lastChecked: new Date(),
+        })
+        toast({
+          title: "✅ موفقیت",
+          description: `محتوای ${data.contentLength || 0} کاراکتر از URL بارگذاری شد`,
+        })
+      } else {
+        setKbStatus({
+          isValidating: false,
+          isValid: false,
+          error: data.error || "خطا در بارگذاری محتوا",
+          contentPreview: null,
+          lastChecked: new Date(),
+        })
+      }
+    } catch (error) {
+      setKbStatus({
+        isValidating: false,
+        isValid: false,
+        error: "خطا در اتصال به سرور",
+        contentPreview: null,
+        lastChecked: new Date(),
+      })
+    }
+  }
 
   const loadFaqs = async () => {
     setLoadingFaqs(true)
@@ -161,8 +244,10 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
       welcome_message: form.getValues("welcome_message"),
       navigation_message: form.getValues("navigation_message"),
       knowledge_base_text: form.getValues("knowledge_base_text"),
+      knowledge_base_url: form.getValues("knowledge_base_url"),
+      store_url: form.getValues("store_url"),
     }
-    savePartialSettings(data, setIsLoadingMessages, "پیام‌ها با موفقیت ذخیره شد!")
+    savePartialSettings(data, setIsLoadingMessages, "پیام‌ها و پایگاه دانش با موفقیت ذخیره شد!")
   }
 
   const handleSaveStats = () => {
@@ -396,18 +481,164 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 mt-4">
-              <div>
-                <Label htmlFor="welcome_message">پیام خوشامدگویی</Label>
-                <Textarea id="welcome_message" {...form.register("welcome_message")} />
+            <CardContent className="space-y-6 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="welcome_message">پیام خوشامدگویی</Label>
+                  <Textarea id="welcome_message" {...form.register("welcome_message")} />
+                </div>
+                <div>
+                  <Label htmlFor="navigation_message">پیام راهنمایی</Label>
+                  <Textarea id="navigation_message" {...form.register("navigation_message")} />
+                </div>
               </div>
+
               <div>
-                <Label htmlFor="navigation_message">پیام راهنمایی</Label>
-                <Textarea id="navigation_message" {...form.register("navigation_message")} />
+                <Label htmlFor="store_url">آدرس فروشگاه (اختیاری)</Label>
+                <Input
+                  id="store_url"
+                  {...form.register("store_url")}
+                  placeholder="https://example.com"
+                  className="font-mono"
+                />
+                <p className="text-sm text-gray-500 mt-1">آدرس فروشگاه برای ارجاع کاربران به محصولات</p>
               </div>
-              <div>
-                <Label htmlFor="knowledge_base_text">متن پایگاه دانش</Label>
-                <Textarea id="knowledge_base_text" {...form.register("knowledge_base_text")} rows={5} />
+
+              <div className="space-y-4 border-t pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold">پایگاه دانش</h3>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="knowledge_base_url" className="flex items-center gap-2">
+                        <Globe className="h-4 w-4" />
+                        آدرس وب‌سایت پایگاه دانش
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="knowledge_base_url"
+                          {...form.register("knowledge_base_url")}
+                          placeholder="https://example.com/knowledge-base"
+                          className="font-mono"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => validateKnowledgeBaseUrl(knowledgeBaseUrl || "")}
+                          disabled={kbStatus.isValidating || !knowledgeBaseUrl?.trim()}
+                        >
+                          {kbStatus.isValidating ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {kbStatus.lastChecked && (
+                        <div className="flex items-center gap-2 mt-2">
+                          {kbStatus.isValid ? (
+                            <Badge variant="default" className="bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              محتوا بارگذاری شد
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              خطا در بارگذاری
+                            </Badge>
+                          )}
+                          <span className="text-xs text-gray-500">
+                            آخرین بررسی: {kbStatus.lastChecked.toLocaleTimeString("fa-IR")}
+                          </span>
+                        </div>
+                      )}
+
+                      {kbStatus.error && (
+                        <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="h-4 w-4" />
+                          {kbStatus.error}
+                        </p>
+                      )}
+
+                      <p className="text-sm text-gray-500 mt-1">
+                        محتوای این صفحه به‌طور خودکار استخراج و به پایگاه دانش اضافه می‌شود
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="knowledge_base_text" className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        متن پایگاه دانش
+                      </Label>
+                      <Textarea
+                        id="knowledge_base_text"
+                        {...form.register("knowledge_base_text")}
+                        rows={8}
+                        placeholder="اطلاعات مربوط به کسب‌وکار، محصولات، خدمات و سوالات متداول خود را اینجا وارد کنید..."
+                      />
+                      <p className="text-sm text-gray-500 mt-1">این متن مستقیماً به پایگاه دانش چت‌بات اضافه می‌شود</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 border rounded-lg p-4">
+                      <h4 className="font-medium mb-3 flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        پیش‌نمایش محتوا
+                      </h4>
+
+                      {kbStatus.contentPreview ? (
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-700 bg-white p-3 rounded border max-h-40 overflow-y-auto">
+                            {kbStatus.contentPreview}
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>محتوای استخراج شده از URL</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(knowledgeBaseUrl, "_blank")}
+                              className="h-6 px-2"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : form.watch("knowledge_base_text") ? (
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-700 bg-white p-3 rounded border max-h-40 overflow-y-auto">
+                            {form.watch("knowledge_base_text")?.slice(0, 500)}
+                            {(form.watch("knowledge_base_text")?.length || 0) > 500 && "..."}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            متن پایگاه دانش ({form.watch("knowledge_base_text")?.length || 0} کاراکتر)
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500 text-center py-8">
+                          هیچ محتوایی برای نمایش وجود ندارد
+                          <br />
+                          یک URL وارد کنید یا متن پایگاه دانش را تکمیل کنید
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h4 className="font-medium text-blue-900 mb-2">نکات مهم:</h4>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• محتوای URL و متن با هم ترکیب می‌شوند</li>
+                        <li>• محتوا هر ۳۰ دقیقه به‌روزرسانی می‌شود</li>
+                        <li>• حداکثر ۱۲۰۰۰ کاراکتر پردازش می‌شود</li>
+                        <li>• محتوای HTML به‌طور خودکار تمیز می‌شود</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

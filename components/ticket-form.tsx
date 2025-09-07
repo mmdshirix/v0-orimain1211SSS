@@ -64,6 +64,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chatbot_id: chatbotId,
+          name: "کاربر", // Default name since it's required by API
           phone: phone.trim(),
           subject: subject.trim(),
           message: message.trim(),
@@ -90,7 +91,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/tickets/user/${encodeURIComponent(userPhone.trim())}`)
+      const response = await fetch(`/api/tickets/user/${encodeURIComponent(userPhone.trim())}?chatbotId=${chatbotId}`)
       if (response.ok) {
         const data = await response.json()
         setTickets(data.tickets || [])
@@ -166,7 +167,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   // Create ticket view
   if (view === "create") {
     return (
-      <div className="p-3 h-full overflow-y-auto" dir="rtl" style={{ color: "#000000 !important" }}>
+      <div className="p-3 h-full overflow-y-auto bg-white text-gray-900" dir="rtl">
         <div className="space-y-4">
           <div className="text-center mb-4">
             <h2 className="text-lg font-semibold text-gray-900 mb-1">ایجاد تیکت جدید</h2>
@@ -182,8 +183,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="09123456789"
                 required
-                className="text-right bg-white text-black border-gray-300"
-                style={{ color: "#000000 !important" }}
+                className="text-right bg-white text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -193,8 +193,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="موضوع تیکت خود را وارد کنید"
                 required
-                className="text-right bg-white text-black border-gray-300"
-                style={{ color: "#000000 !important" }}
+                className="text-right bg-white text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -205,8 +204,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 placeholder="توضیحات کامل مشکل یا سوال خود را بنویسید..."
                 rows={4}
                 required
-                className="text-right bg-white text-black border-gray-300"
-                style={{ color: "#000000 !important" }}
+                className="text-right bg-white text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
             <div className="flex gap-2">
@@ -235,7 +233,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   // Ticket list view
   if (view === "list") {
     return (
-      <div className="p-3 h-full overflow-y-auto" dir="rtl" style={{ color: "#000000 !important" }}>
+      <div className="p-3 h-full overflow-y-auto bg-white text-gray-900" dir="rtl">
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -262,7 +260,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 return (
                   <div
                     key={ticket.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow bg-white rounded-lg border p-4"
+                    className="cursor-pointer hover:shadow-md transition-shadow bg-white rounded-lg border border-gray-200 p-4"
                     onClick={() => viewTicketDetail(ticket)}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -305,7 +303,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
     const StatusIcon = status.icon
 
     return (
-      <div className="p-3 h-full overflow-y-auto" dir="rtl" style={{ color: "#000000 !important" }}>
+      <div className="p-3 h-full overflow-y-auto bg-white text-gray-900" dir="rtl">
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">جزئیات تیکت</h2>
@@ -374,8 +372,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                   onChange={(e) => setNewResponse(e.target.value)}
                   placeholder="پاسخ خود را بنویسید..."
                   rows={3}
-                  className="text-right bg-white text-black border-gray-300"
-                  style={{ color: "#000000 !important" }}
+                  className="text-right bg-white text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
                 <Button type="submit" disabled={loading || !newResponse.trim()} className="w-full">
                   <Send className="w-4 h-4 ml-2" />

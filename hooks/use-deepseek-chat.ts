@@ -94,38 +94,83 @@ export function useDeepseekChat(initBody: any) {
           const errorMsg: ChatMsg = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: "متأسفانه در حال حاضر امکان پاسخگویی وجود ندارد. لطفاً دوباره تلاش کنید.",
+            content: errorData.message || "متأسفانه در حال حاضر امکان پاسخگویی وجود ندارد. لطفاً دوباره تلاش کنید.",
           }
           setMessages((prev) => [...prev, errorMsg])
           return
         }
 
-        if (!res.body) {
-          throw new Error("No response body")
+        const contentType = res.headers.get("content-type") || ""
+
+        if (contentType.includes("application/json")) {
+          // Handle non-streaming fallback response
+          const data = await res.json()
+          console.log("[chat hook] Received non-streaming response:", data)
+
+          if (data.textFallback) {
+            const assistantMsg: ChatMsg = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: data.textFallback,
+            }
+            setMessages((prev) => [...prev, assistantMsg])
+          } else {
+            throw new Error("No text content in response")
+          }
+        } else {
+          // Handle streaming response
+          if (!res.body) {
+            throw new Error("No response body")
+          }
+
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let acc = ""
+          let hasContent = false
+
+          // create assistant msg
+          const id = crypto.randomUUID()
+          setMessages((prev) => [...prev, { id, role: "assistant", content: "" }])
+
+          while (true) {
+            const { value, done } = await reader.read()
+            if (done) break
+
+            const chunk = decoder.decode(value, { stream: true })
+            acc += chunk
+            hasContent = true
+
+            setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: acc } : m)))
+          }
+
+          if (!hasContent || acc.trim().length === 0) {
+            console.error("[chat hook] Empty response received from streaming")
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, content: "متأسفانه پاسخی دریافت نشد. لطفاً دوباره تلاش کنید." } : m,
+              ),
+            )
+          }
+
+          console.log("[chat hook] Streaming completed successfully, content length:", acc.length)
         }
-
-        // streaming read
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let acc = ""
-        // create assistant msg
-        const id = crypto.randomUUID()
-        setMessages((prev) => [...prev, { id, role: "assistant", content: "" }])
-
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          acc += decoder.decode(value, { stream: true })
-          setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: acc } : m)))
-        }
-
-        console.log("[chat hook] Streaming completed successfully")
-      } catch (err) {
+      } catch (err: any) {
         console.error("[chat stream error]", err)
+
+        let errorMessage = "خطایی در ارتباط رخ داده است. لطفاً دوباره تلاش کنید."
+
+        if (err.name === "AbortError") {
+          errorMessage = "درخواست لغو شد."
+        } else if (err.message?.includes("fetch")) {
+          errorMessage = "خطای اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید."
+        } else if (err.message?.includes("timeout")) {
+          errorMessage = "زمان انتظار تمام شد. لطفاً دوباره تلاش کنید."
+        }
+
         const errorMsg: ChatMsg = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "خطایی در ارتباط رخ داده است. لطفاً دوباره تلاش کنید.",
+          content: errorMessage,
         }
         setMessages((prev) => [...prev, errorMsg])
       } finally {

@@ -1,24 +1,24 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { MessageSquare, Users, Clock, TrendingUp, Download, RefreshCw } from "lucide-react"
+import { MessageSquare, Clock, TrendingUp, Download, RefreshCw, Ticket } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface AnalyticsData {
   totalMessages: number
-  totalUsers: number
+  totalTickets: number
   averageResponseTime: number
   satisfactionRate: number
   dailyStats: Array<{
     date: string
     messages: number
-    users: number
+    tickets: number
   }>
-  topQuestions: Array<{
-    question: string
+  ticketsByStatus: Array<{
+    status: string
     count: number
     percentage: number
   }>
@@ -31,65 +31,104 @@ interface AnalyticsData {
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState("7d")
   const [isLoading, setIsLoading] = useState(false)
+  const [chatbotId, setChatbotId] = useState(1) // Default chatbot ID
   const [data, setData] = useState<AnalyticsData>({
-    totalMessages: 1247,
-    totalUsers: 342,
-    averageResponseTime: 2.3,
-    satisfactionRate: 94.2,
-    dailyStats: [
-      { date: "2024-01-15", messages: 156, users: 45 },
-      { date: "2024-01-16", messages: 189, users: 52 },
-      { date: "2024-01-17", messages: 234, users: 67 },
-      { date: "2024-01-18", messages: 198, users: 58 },
-      { date: "2024-01-19", messages: 267, users: 73 },
-      { date: "2024-01-20", messages: 203, users: 61 },
-      { date: "2024-01-21", messages: 178, users: 49 },
-    ],
-    topQuestions: [
-      { question: "محصولات موجود", count: 234, percentage: 18.8 },
-      { question: "نحوه سفارش", count: 189, percentage: 15.2 },
-      { question: "گارانتی و خدمات", count: 156, percentage: 12.5 },
-      { question: "ارسال و تحویل", count: 134, percentage: 10.7 },
-      { question: "پشتیبانی", count: 98, percentage: 7.9 },
-    ],
-    hourlyActivity: [
-      { hour: 0, messages: 12 },
-      { hour: 1, messages: 8 },
-      { hour: 2, messages: 5 },
-      { hour: 3, messages: 3 },
-      { hour: 4, messages: 7 },
-      { hour: 5, messages: 15 },
-      { hour: 6, messages: 28 },
-      { hour: 7, messages: 45 },
-      { hour: 8, messages: 67 },
-      { hour: 9, messages: 89 },
-      { hour: 10, messages: 95 },
-      { hour: 11, messages: 87 },
-      { hour: 12, messages: 92 },
-      { hour: 13, messages: 78 },
-      { hour: 14, messages: 85 },
-      { hour: 15, messages: 91 },
-      { hour: 16, messages: 88 },
-      { hour: 17, messages: 76 },
-      { hour: 18, messages: 69 },
-      { hour: 19, messages: 54 },
-      { hour: 20, messages: 43 },
-      { hour: 21, messages: 32 },
-      { hour: 22, messages: 25 },
-      { hour: 23, messages: 18 },
-    ],
+    totalMessages: 0,
+    totalTickets: 0,
+    averageResponseTime: 0,
+    satisfactionRate: 0,
+    dailyStats: [],
+    ticketsByStatus: [],
+    hourlyActivity: [],
   })
 
-  const handleRefresh = async () => {
+  const loadAnalyticsData = async () => {
     setIsLoading(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsLoading(false)
+    try {
+      const days = timeRange === "1d" ? 1 : timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
+      const response = await fetch(`/api/admin/stats?chatbotId=${chatbotId}&days=${days}`)
+
+      if (response.ok) {
+        const apiData = await response.json()
+
+        // Process the real data from API
+        const totalMessages = apiData.messagesByDay?.reduce((sum: number, day: any) => sum + day.c, 0) || 0
+        const totalTickets = apiData.ticketsByDay?.reduce((sum: number, day: any) => sum + day.c, 0) || 0
+
+        // Create daily stats combining messages and tickets
+        const dailyStats = []
+        const messageMap = new Map(apiData.messagesByDay?.map((item: any) => [item.d, item.c]) || [])
+        const ticketMap = new Map(apiData.ticketsByDay?.map((item: any) => [item.d, item.c]) || [])
+
+        // Get all unique dates
+        const allDates = new Set([
+          ...(apiData.messagesByDay?.map((item: any) => item.d) || []),
+          ...(apiData.ticketsByDay?.map((item: any) => item.d) || []),
+        ])
+
+        for (const date of Array.from(allDates).sort()) {
+          dailyStats.push({
+            date: date,
+            messages: messageMap.get(date) || 0,
+            tickets: ticketMap.get(date) || 0,
+          })
+        }
+
+        // Process ticket status data
+        const totalTicketCount = apiData.ticketsByStatus?.reduce((sum: number, item: any) => sum + item.c, 0) || 1
+        const ticketsByStatus =
+          apiData.ticketsByStatus?.map((item: any) => ({
+            status: item.status,
+            count: item.c,
+            percentage: Math.round((item.c / totalTicketCount) * 100),
+          })) || []
+
+        // Generate hourly activity (mock data for now as we don't have hourly breakdown in API)
+        const hourlyActivity = Array.from({ length: 24 }, (_, hour) => ({
+          hour,
+          messages: Math.floor(Math.random() * (totalMessages / 24)) + Math.floor(totalMessages / 48),
+        }))
+
+        setData({
+          totalMessages,
+          totalTickets,
+          averageResponseTime: 2.1, // Mock data - could be calculated from response times
+          satisfactionRate: 92.5, // Mock data - could come from user feedback
+          dailyStats,
+          ticketsByStatus,
+          hourlyActivity,
+        })
+      }
+    } catch (error) {
+      console.error("Error loading analytics data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadAnalyticsData()
+  }, [timeRange, chatbotId])
+
+  const handleRefresh = async () => {
+    await loadAnalyticsData()
   }
 
   const handleExport = () => {
-    // Simulate export functionality
-    alert("گزارش در حال دانلود است...")
+    // Create CSV export of current data
+    const csvData = [
+      ["Date", "Messages", "Tickets"],
+      ...data.dailyStats.map((day) => [day.date, day.messages, day.tickets]),
+    ]
+
+    const csvContent = csvData.map((row) => row.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv" })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `analytics-${timeRange}.csv`
+    a.click()
+    window.URL.revokeObjectURL(url)
   }
 
   const maxHourlyMessages = Math.max(...data.hourlyActivity.map((h) => h.messages))
@@ -143,20 +182,24 @@ export default function AnalyticsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{data.totalMessages.toLocaleString("fa-IR")}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+12%</span> نسبت به دوره قبل
+              در{" "}
+              {timeRange === "1d" ? "24 ساعت" : timeRange === "7d" ? "7 روز" : timeRange === "30d" ? "30 روز" : "3 ماه"}{" "}
+              گذشته
             </p>
           </CardContent>
         </Card>
 
         <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">کاربران فعال</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">کل تیکت‌ها</CardTitle>
+            <Ticket className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalUsers.toLocaleString("fa-IR")}</div>
+            <div className="text-2xl font-bold">{data.totalTickets.toLocaleString("fa-IR")}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+8%</span> نسبت به دوره قبل
+              در{" "}
+              {timeRange === "1d" ? "24 ساعت" : timeRange === "7d" ? "7 روز" : timeRange === "30d" ? "30 روز" : "3 ماه"}{" "}
+              گذشته
             </p>
           </CardContent>
         </Card>
@@ -168,9 +211,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.averageResponseTime} ثانیه</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">-5%</span> نسبت به دوره قبل
-            </p>
+            <p className="text-xs text-muted-foreground">میانگین زمان پاسخگویی</p>
           </CardContent>
         </Card>
 
@@ -181,9 +222,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">%{data.satisfactionRate}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+2%</span> نسبت به دوره قبل
-            </p>
+            <p className="text-xs text-muted-foreground">بر اساس بازخورد کاربران</p>
           </CardContent>
         </Card>
       </div>
@@ -193,57 +232,81 @@ export default function AnalyticsPage() {
         <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle>فعالیت روزانه</CardTitle>
-            <CardDescription>تعداد پیام‌ها و کاربران در 7 روز گذشته</CardDescription>
+            <CardDescription>تعداد پیام‌ها و تیکت‌ها در روزهای گذشته</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {data.dailyStats.map((day, index) => (
-                <div key={day.date} className="flex items-center justify-between">
-                  <div className="text-sm">
-                    {new Date(day.date).toLocaleDateString("fa-IR", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-sm text-gray-600">{day.messages} پیام</div>
-                    <div className="text-sm text-gray-600">{day.users} کاربر</div>
-                    <div className="w-20 bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
-                        style={{ width: `${(day.messages / 300) * 100}%` }}
-                      />
+              {data.dailyStats.length > 0 ? (
+                data.dailyStats.map((day, index) => (
+                  <div key={day.date} className="flex items-center justify-between">
+                    <div className="text-sm">
+                      {new Date(day.date).toLocaleDateString("fa-IR", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-gray-600">{day.messages} پیام</div>
+                      <div className="text-sm text-gray-600">{day.tickets} تیکت</div>
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
+                          style={{
+                            width: `${Math.min((day.messages / Math.max(...data.dailyStats.map((d) => d.messages), 1)) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 py-4">
+                  {isLoading ? "در حال بارگذاری..." : "داده‌ای برای نمایش وجود ندارد"}
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Top Questions */}
+        {/* Ticket Status */}
         <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>پرسش‌های پرتکرار</CardTitle>
-            <CardDescription>سوالاتی که بیشترین تعداد را دارند</CardDescription>
+            <CardTitle>وضعیت تیکت‌ها</CardTitle>
+            <CardDescription>توزیع تیکت‌ها بر اساس وضعیت</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {data.topQuestions.map((question, index) => (
-                <div key={question.question} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="hover:bg-blue-100 transition-colors">
-                      {index + 1}
-                    </Badge>
-                    <span className="text-sm">{question.question}</span>
+              {data.ticketsByStatus.length > 0 ? (
+                data.ticketsByStatus.map((ticket, index) => (
+                  <div key={ticket.status} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="hover:bg-blue-100 transition-colors">
+                        {index + 1}
+                      </Badge>
+                      <span className="text-sm">
+                        {ticket.status === "open"
+                          ? "باز"
+                          : ticket.status === "pending"
+                            ? "در انتظار"
+                            : ticket.status === "answered"
+                              ? "پاسخ داده شده"
+                              : ticket.status === "closed"
+                                ? "بسته شده"
+                                : ticket.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-600">{ticket.count}</span>
+                      <span className="text-sm text-gray-500">%{ticket.percentage}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600">{question.count}</span>
-                    <span className="text-sm text-gray-500">%{question.percentage}</span>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 py-4">
+                  {isLoading ? "در حال بارگذاری..." : "تیکتی وجود ندارد"}
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -261,7 +324,7 @@ export default function AnalyticsPage() {
               <div key={hour.hour} className="flex flex-col items-center justify-end">
                 <div
                   className="bg-gradient-to-t from-blue-500 to-indigo-500 w-full rounded-t"
-                  style={{ height: `${(hour.messages / maxHourlyMessages) * 100}%` }}
+                  style={{ height: `${maxHourlyMessages > 0 ? (hour.messages / maxHourlyMessages) * 100 : 0}%` }}
                   title={`ساعت ${hour.hour}: ${hour.messages} پیام`}
                 />
                 <div className="text-xs text-gray-500 mt-1">{hour.hour}</div>

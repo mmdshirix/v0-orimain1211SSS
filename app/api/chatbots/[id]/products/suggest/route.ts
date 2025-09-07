@@ -14,6 +14,26 @@ function keywords(q: string) {
     .slice(0, 6)
 }
 
+function normalizeProductUrls(products: any[]) {
+  return products.map((product) => ({
+    ...product,
+    // Ensure product_url is complete
+    product_url:
+      product.product_url && !product.product_url.startsWith("http")
+        ? `https://${product.product_url}`
+        : product.product_url || "#",
+    // Ensure image_url is complete
+    image_url:
+      product.image_url && !product.image_url.startsWith("http")
+        ? `https://${product.image_url}`
+        : product.image_url || "/placeholder.svg",
+    // Ensure price is a number
+    price: Number(product.price || 0),
+    // Provide default button text
+    button_text: product.button_text || "خرید",
+  }))
+}
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const id = Number(params.id)
   const q = new URL(req.url).searchParams.get("q") || ""
@@ -25,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       FROM chatbot_products WHERE chatbot_id=? ORDER BY position ASC, id ASC LIMIT 4`,
       [id],
     )
-    return NextResponse.json(rows || [])
+    return NextResponse.json(normalizeProductUrls(rows || []))
   }
 
   const like = `%${kws.join("%")}%`
@@ -36,5 +56,5 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
      ORDER BY position ASC, id ASC LIMIT 4`,
     [id, like, like],
   )
-  return NextResponse.json(rows || [])
+  return NextResponse.json(normalizeProductUrls(rows || []))
 }

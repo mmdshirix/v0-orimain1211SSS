@@ -19,9 +19,6 @@ export default function WidgetLayout({
             html, body, #__next { 
               margin: 0 !important; 
               padding: 0 !important; 
-              height: 600px !important; 
-              max-height: 600px !important;
-              min-height: 600px !important;
               width: 100% !important;
               box-sizing: border-box !important;
               overflow: hidden !important;
@@ -29,6 +26,26 @@ export default function WidgetLayout({
               line-height: 1 !important;
               font-size: 14px !important;
             }
+            
+            /* Desktop uses fixed 640px height - single source of truth */
+            @media (min-width: 481px) {
+              html, body, #__next { 
+                height: 640px !important; 
+                max-height: 640px !important;
+                min-height: 640px !important;
+              }
+            }
+            
+            /* Mobile uses full viewport height only on mobile */
+            @media (max-width: 480px) {
+              html, body, #__next { 
+                height: 100vh !important; 
+                max-height: 100vh !important;
+                min-height: 100vh !important;
+                width: 100vw !important;
+              }
+            }
+            
             * { 
               box-sizing: border-box !important; 
             }
@@ -40,32 +57,55 @@ export default function WidgetLayout({
               margin: 0 !important;
               padding: 0 !important;
             }
-            /* Prevent host site CSS inheritance and baseline gaps */
+            /* Enhanced isolation to prevent CSS inheritance from host sites */
             :root { 
               padding: 0 !important; 
               margin: 0 !important;
               line-height: 1 !important;
+              font-size: 14px !important;
+              vertical-align: baseline !important;
             }
-            /* Force exact 600px height container */
+            /* Force exact height matching iframe loader - single source of truth */
             #ts-root {
-              height: 600px !important;
-              max-height: 600px !important;
-              min-height: 600px !important;
-              width: 100% !important;
               overflow: hidden !important;
               display: block !important;
               margin: 0 !important;
               padding: 0 !important;
+              position: relative !important;
+              vertical-align: top !important;
+              line-height: 1 !important;
+              border: none !important;
+              outline: none !important;
             }
             
-            /* Mobile full screen with proper height management */
-            @media (max-width: 768px) {
-              html, body, #__next, #ts-root { 
+            /* Desktop: exact 640px height matching loader */
+            @media (min-width: 481px) {
+              #ts-root {
+                height: 640px !important;
+                max-height: 640px !important;
+                min-height: 640px !important;
+                width: 100% !important;
+              }
+            }
+            
+            /* Mobile: full viewport matching loader */
+            @media (max-width: 480px) {
+              #ts-root {
                 height: 100vh !important;
                 max-height: 100vh !important;
                 min-height: 100vh !important;
                 width: 100vw !important;
               }
+            }
+            
+            /* Additional reset for common host site interference */
+            #ts-root * {
+              margin: 0 !important;
+              padding: 0 !important;
+              border: 0 !important;
+              font-size: inherit !important;
+              vertical-align: baseline !important;
+              line-height: inherit !important;
             }
           `,
           }}

@@ -81,28 +81,26 @@ export async function GET() {
     \`;
     launcherButton.innerHTML = '💬';
 
-    // iframe ویجت
     const widgetFrame = document.createElement('iframe');
     widgetFrame.id = 'talksell-widget-iframe';
-    widgetFrame.src = \`\${BASE_URL}/widget/\${chatbotId}\`; // Removing ?v= parameter to prevent unnecessary iframe reloads that cause duplicate welcome messages
+    widgetFrame.src = \`\${BASE_URL}/widget/\${chatbotId}\`;
     widgetFrame.style.cssText = \`
-        border: none;
-        width: 400px;
-        max-width: calc(100vw - 40px);
-        height: 600px;
-        max-height: calc(100vh - 40px);
-        min-height: 600px;
-        border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        position: absolute;
-        opacity: 0;
-        transform: scale(0.95) translateY(10px);
-        transition: opacity 0.3s ease, transform 0.3s ease;
-        pointer-events: none;
-        display: none;
-        z-index: 1;
-        background: white;
-        overflow: hidden;
+        border: none !important;
+        width: 400px !important;
+        max-width: calc(100vw - 40px) !important;
+        height: 640px !important;
+        max-height: 640px !important;
+        min-height: 640px !important;
+        border-radius: 16px !important;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
+        position: absolute !important;
+        opacity: 0 !important;
+        transition: opacity 0.3s ease !important;
+        pointer-events: none !important;
+        display: none !important;
+        z-index: 1 !important;
+        background: white !important;
+        overflow: hidden !important;
         margin: 0 !important;
         padding: 0 !important;
         line-height: 1 !important;
@@ -110,6 +108,10 @@ export async function GET() {
         box-sizing: border-box !important;
         border-spacing: 0 !important;
         border-collapse: separate !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
     \`;
 
     console.log(\`🤖 [TalkSell Widget] 📐 Applying position: \${position} with margins X:\${marginX}px, Y:\${marginY}px\`);
@@ -125,19 +127,19 @@ export async function GET() {
         // تنظیم موقعیت کانتینر بر اساس position و margin ها
         if (position.includes('bottom')) {
             container.style.bottom = marginY + 'px';
-            widgetFrame.style.bottom = '70px'; // فاصله از دکمه
+            widgetFrame.style.bottom = '80px';
         }
         if (position.includes('top')) {
             container.style.top = marginY + 'px';
-            widgetFrame.style.top = '70px';
+            widgetFrame.style.top = '80px';
         }
         if (position.includes('right')) {
             container.style.right = marginX + 'px';
-            widgetFrame.style.right = '0';
+            widgetFrame.style.right = '0px';
         }
         if (position.includes('left')) {
             container.style.left = marginX + 'px';
-            widgetFrame.style.left = '0';
+            widgetFrame.style.left = '0px';
         }
 
         console.log(\`🤖 [TalkSell Widget] ✅ Position applied successfully - Container positioned at \${position} with X:\${marginX}px, Y:\${marginY}px\`);
@@ -163,17 +165,13 @@ export async function GET() {
             widgetFrame.style.display = 'block';
             setTimeout(() => {
                 widgetFrame.style.opacity = '1';
-                widgetFrame.style.transform = 'scale(1) translateY(0)';
                 widgetFrame.style.pointerEvents = 'auto';
                 launcherButton.innerHTML = '✕';
-                launcherButton.style.transform = 'rotate(180deg)';
             }, 10);
         } else {
             widgetFrame.style.opacity = '0';
-            widgetFrame.style.transform = 'scale(0.95) translateY(10px)';
             widgetFrame.style.pointerEvents = 'none';
             launcherButton.innerHTML = '💬';
-            launcherButton.style.transform = 'rotate(0deg)';
             setTimeout(() => {
                 if (!isOpen) widgetFrame.style.display = 'none';
             }, 300);
@@ -184,18 +182,17 @@ export async function GET() {
     launcherButton.addEventListener('click', toggleWidget);
     
     launcherButton.addEventListener('mouseenter', () => {
-        launcherButton.style.transform = (isOpen ? 'rotate(180deg) ' : '') + 'scale(1.1)';
+        launcherButton.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2)';
     });
     
     launcherButton.addEventListener('mouseleave', () => {
-        launcherButton.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+        launcherButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
     });
 
-    // پیام‌های iframe
     window.addEventListener('message', (event) => {
         if (event.source !== widgetFrame.contentWindow) return;
         
-        if (event.data.type === 'orion-chatbot-close') {
+        if (event.data.type === 'CLOSE_CHATBOT' || event.data.type === 'orion-chatbot-close') {
             if (isOpen) toggleWidget();
         } else if (event.data.type === 'orion-chatbot-toggle') {
             toggleWidget();
@@ -203,25 +200,29 @@ export async function GET() {
     });
 
     function updateIframeSize() {
-        const isMobile = window.innerWidth <= 768;
+        const isMobile = window.innerWidth <= 480;
         if (isMobile) {
-            widgetFrame.style.width = '100vw';
-            widgetFrame.style.height = '100vh';
-            widgetFrame.style.maxWidth = '100vw';
-            widgetFrame.style.maxHeight = '100vh';
-            widgetFrame.style.minHeight = '100vh';
-            widgetFrame.style.borderRadius = '0px';
-            widgetFrame.style.left = '0';
-            widgetFrame.style.right = '0';
-            widgetFrame.style.top = '0';
-            widgetFrame.style.bottom = '0';
+            widgetFrame.style.width = '100vw !important';
+            widgetFrame.style.height = '100vh !important';
+            widgetFrame.style.maxWidth = '100vw !important';
+            widgetFrame.style.maxHeight = '100vh !important';
+            widgetFrame.style.minHeight = '100vh !important';
+            widgetFrame.style.borderRadius = '0px !important';
+            widgetFrame.style.left = '0 !important';
+            widgetFrame.style.right = '0 !important';
+            widgetFrame.style.top = '0 !important';
+            widgetFrame.style.bottom = '0 !important';
+            widgetFrame.style.position = 'fixed !important';
         } else {
-            widgetFrame.style.width = '400px';
-            widgetFrame.style.height = '600px';
-            widgetFrame.style.maxWidth = 'calc(100vw - 40px)';
-            widgetFrame.style.maxHeight = '600px';
-            widgetFrame.style.minHeight = '600px';
-            widgetFrame.style.borderRadius = '16px';
+            widgetFrame.style.width = '400px !important';
+            widgetFrame.style.height = '640px !important';
+            widgetFrame.style.maxWidth = 'calc(100vw - 40px) !important';
+            widgetFrame.style.maxHeight = '640px !important';
+            widgetFrame.style.minHeight = '640px !important';
+            widgetFrame.style.borderRadius = '16px !important';
+            widgetFrame.style.position = 'absolute !important';
+            // Reapply positioning for desktop
+            applyPosition();
         }
     }
 

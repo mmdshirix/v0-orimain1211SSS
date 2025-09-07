@@ -60,6 +60,8 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
   const [nextSuggestions, setNextSuggestions] = useState<NextSuggestion[]>([])
   const [welcomeShown, setWelcomeShown] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
 
   const chatbotId = Number(chatbot?.id ?? 0)
   const botName = safeTrim(chatbot?.name, "Chat")
@@ -69,13 +71,63 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
 
   const popularEmojis = ["😊", "👍", "❤️", "😂", "🔥", "👏", "🎉", "💯", "🤔", "😍"]
 
-  const { messages, input, setInput, isLoading, append, handleSubmit } = useDeepseekChat({
+  const { messages, input, setInput, isLoading, append, handleSubmit, clearMemory } = useDeepseekChat({
     chatbotId,
     chatbotName: botName,
     kbText,
     kbUrl,
     storeUrl,
   })
+
+  const playNotificationSound = () => {
+    if (soundEnabled) {
+      try {
+        const audio = new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.wav")
+        audio.volume = 0.3
+        audio.play().catch(() => {
+          const context = new (window.AudioContext || (window as any).webkitAudioContext)()
+          const oscillator = context.createOscillator()
+          const gainNode = context.createGain()
+          oscillator.connect(gainNode)
+          gainNode.connect(context.destination)
+          oscillator.frequency.value = 800
+          gainNode.gain.setValueAtTime(0.1, context.currentTime)
+          oscillator.start()
+          oscillator.stop(context.currentTime + 0.2)
+        })
+      } catch (error) {
+        console.log("Sound notification failed:", error)
+      }
+    }
+  }
+
+  const handleCloseWidget = () => {
+    if (window.parent) {
+      window.parent.postMessage({ type: "CLOSE_CHATBOT" }, "*")
+    }
+  }
+
+  const handleClearHistory = () => {
+    clearMemory()
+    setShowMenu(false)
+    const sessionKey = `talksell-welcome-shown-${chatbotId}`
+    sessionStorage.removeItem(sessionKey)
+    setWelcomeShown(false)
+    const msg = safeTrim(chatbot?.welcome_message, "")
+    if (msg) {
+      setTimeout(() => {
+        append({ role: "assistant", content: msg })
+        setWelcomeShown(true)
+        sessionStorage.setItem(sessionKey, "true")
+      }, 100)
+    }
+  }
+
+  const handleToggleSound = () => {
+    setSoundEnabled(!soundEnabled)
+    setShowMenu(false)
+    localStorage.setItem(`talksell-sound-${chatbotId}`, (!soundEnabled).toString())
+  }
 
   useEffect(() => {
     fetch(`/api/chatbots/${chatbotId}/faqs`)
@@ -86,6 +138,10 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
       .then((r) => r.json())
       .then(setProducts)
       .catch(() => {})
+    const savedSoundSetting = localStorage.getItem(`talksell-sound-${chatbotId}`)
+    if (savedSoundSetting !== null) {
+      setSoundEnabled(savedSoundSetting === "true")
+    }
   }, [chatbotId])
 
   useEffect(() => {
@@ -109,7 +165,8 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === "assistant" && lastMessage.content) {
+    if (lastMessage?.role === "assistant" && lastMessage.content && messages.length > 1) {
+      playNotificationSound()
       const content = lastMessage.content
 
       const productRegex = /SUGGESTED_PRODUCTS:\s*(\[.*?\])/
@@ -184,9 +241,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
       id="ts-root"
       className="w-full m-0 p-0"
       style={{
-        height: "600px",
-        maxHeight: "600px",
-        minHeight: "600px",
         overflow: "hidden",
         margin: "0 !important",
         padding: "0 !important",
@@ -203,7 +257,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
         id="ts-shell"
         className="grid w-full bg-[var(--ts-bg)] text-[var(--ts-fg)] m-0"
         style={{
-          height: "600px",
           gridTemplateRows: "64px 1fr 140px",
           overflow: "hidden",
           margin: "0 !important",
@@ -211,6 +264,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
           lineHeight: "1 !important",
           verticalAlign: "top !important",
           border: "none !important",
+          height: "100%",
         }}
         dir="rtl"
       >
@@ -222,6 +276,9 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
             minHeight: "64px",
             maxHeight: "64px",
             overflow: "hidden",
+            margin: "0 !important",
+            padding: "16px !important",
+            boxSizing: "border-box !important",
           }}
         >
           <div className="flex items-center justify-between">
@@ -237,9 +294,76 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                 <p className="text-xs text-white/90">آنلاین</p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <button className="text-white/80 hover:text-white hover:bg-white/20 p-1.5 rounded text-lg">⋮</button>
-              <button className="text-white/80 hover:text-white hover:bg-white/20 p-1.5 rounded text-lg">✕</button>
+            <div className="flex items-center gap-1 relative">
+              <div className="relative">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="text-white/80 hover:text-white hover:bg-white/20 p-1.5 rounded text-lg"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                </button>
+                {showMenu && (
+                  <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                    <div className="py-2">
+                      <button
+                        onClick={handleClearHistory}
+                        className="w-full px-4 py-3 text-right text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                      >
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                        <span>پاک کردن تاریخچه مکالمه</span>
+                      </button>
+                      <button
+                        onClick={handleToggleSound}
+                        className="w-full px-4 py-3 text-right text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                      >
+                        {soundEnabled ? (
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                            />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                            />
+                          </svg>
+                        )}
+                        <span>{soundEnabled ? "خاموش کردن صدا" : "روشن کردن صدا"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleCloseWidget}
+                className="text-white/80 hover:text-white hover:bg-white/20 p-1.5 rounded text-lg"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </div>
         </header>
@@ -251,7 +375,10 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
             overflowY: "auto",
             overflowX: "hidden",
             height: "100%",
-            maxHeight: "calc(600px - 64px - 140px)", // Exactly 396px available for scrollable content
+            margin: "0 !important",
+            padding: "16px !important",
+            boxSizing: "border-box !important",
+            backgroundColor: "#f9fafb !important",
           }}
         >
           {activeTab === "ai" && (
@@ -527,6 +654,11 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
             minHeight: "140px",
             maxHeight: "140px",
             overflow: "hidden",
+            margin: "0 !important",
+            padding: "8px 12px 12px 12px !important",
+            boxSizing: "border-box !important",
+            backgroundColor: "white !important",
+            borderTop: "1px solid #e5e7eb !important",
           }}
         >
           <div className="flex">
@@ -602,7 +734,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                     style={{
                       fontSize: "16px",
                       lineHeight: "1.5",
-                      color: "#000000", // Force black text color for user input
+                      color: "#000000",
                       borderColor: showEmojiPicker ? chatbot.primary_color : undefined,
                       backgroundColor: showEmojiPicker ? "white" : undefined,
                       boxShadow: showEmojiPicker ? `0 0 0 3px ${chatbot.primary_color}20` : undefined,
@@ -616,11 +748,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-all"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"
-                        clipRule="evenodd"
-                      />
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
                     </svg>
                   </button>
                 </div>
@@ -665,7 +793,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                     alt="TalkSell Logo"
                     className="w-4 h-4 object-contain"
                     onError={(e) => {
-                      // Fallback if image fails to load
                       e.currentTarget.style.display = "none"
                     }}
                   />
