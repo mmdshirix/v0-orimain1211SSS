@@ -160,6 +160,23 @@ export interface AdminUser {
   updated_at: string
 }
 
+export interface ChatbotKBCache {
+  id: number
+  chatbot_id: number
+  url: string
+  content: string
+  hash: string
+  updated_at: string
+}
+
+export interface ChatbotMemory {
+  id: number
+  chatbot_id: number
+  client_id: string
+  summary: string
+  updated_at: string
+}
+
 interface SaveMessagePayload {
   chatbot_id: number
   user_message: string
@@ -311,6 +328,29 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         FOREIGN KEY (user_id) REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
         INDEX idx_session_token (session_token),
         INDEX idx_expires_at (expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_kb_cache (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chatbot_id INT NOT NULL,
+        url TEXT NOT NULL,
+        content MEDIUMTEXT NOT NULL,
+        hash VARCHAR(64) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (chatbot_id) REFERENCES chatbots(id) ON DELETE CASCADE,
+        INDEX idx_chatbot_hash (chatbot_id, hash),
+        INDEX idx_updated_at (updated_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_memories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chatbot_id INT NOT NULL,
+        client_id VARCHAR(255) NOT NULL,
+        summary TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (chatbot_id) REFERENCES chatbots(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_chatbot_client (chatbot_id, client_id),
+        INDEX idx_updated_at (updated_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ]
 
@@ -964,3 +1004,64 @@ export async function getChatbotById(id: number) {
 
 export const getChatbotFAQs = getFAQsByChatbotId
 export const getChatbotProducts = getProductsByChatbotId
+
+// Knowledge Base Cache Functions
+export async function getKBCache(chatbotId: number, url: string): Promise<ChatbotKBCache | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM chatbot_kb_cache 
+      WHERE chatbot_id = ${chatbotId} AND url = ${url}
+      AND updated_at > DATE_SUB(NOW(), INTERVAL 6 HOUR)
+      ORDER BY updated_at DESC LIMIT 1
+    `
+    return result.length > 0 ? (result[0] as unknown as ChatbotKBCache) : null
+  } catch (error) {
+    console.error("Error fetching KB cache:", error)
+    return null
+  }
+}
+
+export async function setKBCache(chatbotId: number, url: string, content: string, hash: string): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO chatbot_kb_cache (chatbot_id, url, content, hash, updated_at)
+      VALUES (${chatbotId}, ${url}, ${content}, ${hash}, NOW())
+      ON DUPLICATE KEY UPDATE
+      content = VALUES(content),
+      hash = VALUES(hash),
+      updated_at = NOW()
+    `
+  } catch (error) {
+    console.error("Error setting KB cache:", error)
+    throw error
+  }
+}
+
+// Conversation Memory Functions
+export async function getChatbotMemory(chatbotId: number, clientId: string): Promise<string | null> {
+  try {
+    const result = await sql`
+      SELECT summary FROM chatbot_memories 
+      WHERE chatbot_id = ${chatbotId} AND client_id = ${clientId}
+    `
+    return result.length > 0 ? result[0].summary : null
+  } catch (error) {
+    console.error("Error fetching chatbot memory:", error)
+    return null
+  }
+}
+
+export async function setChatbotMemory(chatbotId: number, clientId: string, summary: string): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO chatbot_memories (chatbot_id, client_id, summary, updated_at)
+      VALUES (${chatbotId}, ${clientId}, ${summary}, NOW())
+      ON DUPLICATE KEY UPDATE
+      summary = VALUES(summary),
+      updated_at = NOW()
+    `
+  } catch (error) {
+    console.error("Error setting chatbot memory:", error)
+    throw error
+  }
+}

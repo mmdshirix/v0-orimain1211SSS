@@ -262,6 +262,7 @@ export default function SettingsPage() {
                   <li>• برای نمایش آمار بیشتر از واقعیت، عددی بزرگتر از 1 وارد کنید</li>
                   <li>• برای نمایش آمار کمتر از واقعیت، عددی کوچکتر از 1 وارد کنید</li>
                   <li>• تغییرات بلافاصله در پنل ادمین اعمال می‌شوند</li>
+                  <li>• پایگاه دانش هر ۶ ساعت به‌روزرسانی می‌شود</li>
                 </ul>
               </div>
 
@@ -444,6 +445,9 @@ export default function SettingsPage() {
                   onChange={(e) => setSettings({ ...settings, knowledge_base_text: e.target.value })}
                   rows={8}
                 />
+                <p className="text-sm text-gray-500 mt-1">
+                  {settings.knowledge_base_text?.length || 0} کاراکتر - محتوا در کش ذخیره می‌شود
+                </p>
               </div>
             </CardContent>
           </Card>

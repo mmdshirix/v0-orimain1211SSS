@@ -1,11 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getKBCache, setKBCache } from "@/lib/db"
+import crypto from "crypto"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-async function fetchAndCleanContent(url: string): Promise<{ content: string; contentLength: number }> {
+async function fetchAndCleanContent(
+  url: string,
+  chatbotId?: number,
+): Promise<{ content: string; contentLength: number }> {
   const timeout = 8000 // 8 seconds
   const maxChars = 12000
+
+  if (chatbotId) {
+    const cached = await getKBCache(chatbotId, url)
+    if (cached) {
+      return {
+        content: cached.content,
+        contentLength: cached.content.length,
+      }
+    }
+  }
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -49,6 +64,11 @@ async function fetchAndCleanContent(url: string): Promise<{ content: string; con
 
     const truncatedContent = cleanContent.slice(0, maxChars)
 
+    if (chatbotId && truncatedContent) {
+      const hash = crypto.createHash("md5").update(url).digest("hex")
+      await setKBCache(chatbotId, url, truncatedContent, hash)
+    }
+
     return {
       content: truncatedContent,
       contentLength: truncatedContent.length,
@@ -64,7 +84,7 @@ async function fetchAndCleanContent(url: string): Promise<{ content: string; con
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
+    const { url, chatbotId } = await req.json()
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "آدرس URL الزامی است" }, { status: 400 })
@@ -78,7 +98,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch and validate content
-    const { content, contentLength } = await fetchAndCleanContent(url)
+    const { content, contentLength } = await fetchAndCleanContent(url, chatbotId ? Number(chatbotId) : undefined)
 
     if (!content || content.trim().length === 0) {
       return NextResponse.json({ error: "محتوای قابل استخراجی از این URL یافت نشد" }, { status: 400 })
@@ -89,6 +109,7 @@ export async function POST(req: NextRequest) {
       preview: content.slice(0, 500), // First 500 chars for preview
       contentLength,
       message: `محتوای ${contentLength} کاراکتر با موفقیت استخراج شد`,
+      cached: chatbotId ? true : false,
     })
   } catch (error: any) {
     console.error("Knowledge base validation error:", error)

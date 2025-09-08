@@ -1,164 +1,115 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { streamText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
-import { getChatbotById } from "@/lib/db"
+import { getChatbot, saveMessage, getChatbotMemory, setChatbotMemory } from "@/lib/db"
+import { composeKnowledgeBase } from "@/lib/kb-composer"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const BASE = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
-const KEY = process.env.DEEPSEEK_API_KEY!
-const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat"
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-5513eacec9a7491c9d38cf8b776f7b62"
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+const DEEPSEEK_MODEL = "deepseek-chat"
 
-const openai = createOpenAI({ baseURL: BASE, apiKey: KEY })
+console.log(`[INIT] DeepSeek API Key source: ${process.env.DEEPSEEK_API_KEY ? "ENV" : "FALLBACK"}`)
+console.log(`[INIT] DeepSeek Base URL: ${DEEPSEEK_BASE_URL}`)
+console.log(`[INIT] DeepSeek Model: ${DEEPSEEK_MODEL}`)
 
-const kbCache = new Map<string, { content: string; timestamp: number; url: string }>()
-const CACHE_TTL = 1000 * 60 * 30 // 30 minutes cache
+const deepseek = createOpenAI({
+  baseURL: DEEPSEEK_BASE_URL,
+  apiKey: DEEPSEEK_API_KEY,
+})
 
-async function fetchKB(url?: string, hardText?: string) {
-  const max = Number(process.env.AI_MAX_CONTEXT_CHARS || 12000)
-  const timeout = Number(process.env.AI_KB_FETCH_TIMEOUT_MS || 8000) // Increased timeout
+function calculateProductRelevance(userMessage: string, product: any): number {
+  const userTokens = userMessage.toLowerCase().split(/\s+/)
+  const productTokens = [
+    ...(product.name || "").toLowerCase().split(/\s+/),
+    ...(product.description || "").toLowerCase().split(/\s+/),
+  ]
 
-  // Start with hardcoded text
-  let text = (hardText || "").toString().slice(0, max)
+  // Purchase intent keywords
+  const purchaseKeywords = ["خرید", "سفارش", "قیمت", "تخفیف", "موجودی", "خریدن", "سفارشی", "فروش"]
+  const hasPurchaseIntent = userTokens.some((token) => purchaseKeywords.includes(token))
 
-  if (!text && url) {
-    const cacheKey = `kb_${url}`
-    const cached = kbCache.get(cacheKey)
-    const now = Date.now()
-
-    // Check cache first
-    if (cached && now - cached.timestamp < CACHE_TTL && cached.url === url) {
-      console.log(`[KB Cache] Using cached content for: ${url}`)
-      return cached.content.slice(0, max)
-    }
-
-    try {
-      console.log(`[KB Fetch] Fetching content from: ${url}`)
-      const ctl = new AbortController()
-      const tid = setTimeout(() => ctl.abort(), timeout)
-
-      const res = await fetch(url, {
-        signal: ctl.signal,
-        headers: {
-          "User-Agent": "TalkSell-Bot/1.0 (+https://talksell.ir)",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
-          "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
-          "Cache-Control": "no-cache",
-        },
-        redirect: "follow",
-        timeout: timeout,
-      })
-
-      clearTimeout(tid)
-
-      if (res.ok) {
-        const rawText = await res.text()
-
-        // Clean HTML content if it's HTML
-        const contentType = res.headers.get("content-type") || ""
-        let cleanText = rawText
-
-        if (contentType.includes("text/html")) {
-          // Basic HTML cleaning - remove scripts, styles, and common HTML tags
-          cleanText = rawText
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
-            .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
-            .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
-            .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-        }
-
-        text = cleanText.slice(0, max)
-
-        // Cache the result
-        kbCache.set(cacheKey, {
-          content: text,
-          timestamp: now,
-          url: url,
-        })
-
-        console.log(`[KB Fetch] Successfully fetched and cached ${text.length} characters from: ${url}`)
-      } else {
-        console.warn(`[KB Fetch] Failed to fetch ${url}: ${res.status} ${res.statusText}`)
-      }
-    } catch (error: any) {
-      if (error.name === "AbortError") {
-        console.warn(`[KB Fetch] Timeout fetching ${url}`)
-      } else {
-        console.warn(`[KB Fetch] Error fetching ${url}:`, error.message)
+  let score = 0
+  userTokens.forEach((token) => {
+    if (token.length > 2) {
+      // Exact name matches get highest score
+      if (product.name?.toLowerCase().includes(token)) {
+        score += 5
+      } else if (productTokens.includes(token)) {
+        score += 2
       }
     }
+  })
+
+  // Bonus for purchase intent
+  if (hasPurchaseIntent && score > 0) {
+    score += 3
   }
 
-  return text
-}
-
-async function getProductKnowledge(chatbotId: number): Promise<string> {
-  try {
-    const url = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/chatbots/${chatbotId}/products`
-    const res = await fetch(url)
-    if (res.ok) {
-      const products = await res.json()
-      if (products.length === 0) return ""
-
-      // Structure products as knowledge for AI
-      const productKnowledge = products
-        .map(
-          (p: any) =>
-            `محصول: ${p.name}\nتوضیحات: ${p.description || "توضیحاتی ارائه نشده"}\nقیمت: ${p.price ? `${p.price} تومان` : "قیمت موجود نیست"}\nلینک: ${p.product_url || "لینک موجود نیست"}\n`,
-        )
-        .join("\n")
-
-      return `=== فهرست محصولات فروشگاه ===\n${productKnowledge}=== پایان فهرست محصولات ===\n`
-    }
-  } catch (error) {
-    console.error("Failed to fetch product knowledge:", error)
-  }
-  return ""
-}
-
-function toOpenAIChatMessages(messages: any[]) {
-  return messages.map((m) => ({ role: m.role, content: String(m.content ?? "") }))
+  // Only return products with meaningful relevance
+  return score >= 3 ? score : 0
 }
 
 async function getProductSuggestions(chatbotId: number, userMessage: string) {
   try {
-    const url = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/chatbots/${chatbotId}/products/suggest?q=${encodeURIComponent(userMessage)}`
-    const res = await fetch(url)
-    if (res.ok) {
-      const products = await res.json()
-      return products.slice(0, 4)
-    }
+    const kb = await composeKnowledgeBase(chatbotId)
+    const products = kb.kb_products.filter((p) => p.price !== null && p.price > 0)
+
+    const scoredProducts = products
+      .map((product) => ({
+        ...product,
+        relevanceScore: calculateProductRelevance(userMessage, product),
+      }))
+      .filter((p) => p.relevanceScore > 0)
+      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .slice(0, 4)
+
+    return scoredProducts.map(({ relevanceScore, ...product }) => ({
+      id: product.name, // Use name as ID for now
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      product_url: product.product_url,
+      image_url: product.image_url,
+      button_text: product.button_text || "مشاهده محصول",
+    }))
   } catch (error) {
-    console.error("Failed to fetch product suggestions:", error)
+    console.error("Failed to get product suggestions:", error)
+    return []
   }
-  return []
 }
 
-async function getNextSuggestions(lastAssistant: string, kbHint: string) {
+async function getNextSuggestions(lastAssistant: string, userMessage: string, kbContent: string) {
   try {
-    const url = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/ai/suggest-next`
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lastAssistant, kbHint }),
-    })
-    if (res.ok) {
-      const suggestions = await res.json()
-      return suggestions.map((text: string, index: number) => ({
-        text: text.replace(/^[^\s]+\s/, ""), // Remove emoji from text
-        emoji: text.match(/^[^\s]+/)?.[0] || "💬", // Extract emoji
-      }))
+    const suggestions = []
+
+    // Context-based suggestions
+    if (lastAssistant.includes("محصول") || lastAssistant.includes("خرید") || userMessage.includes("قیمت")) {
+      suggestions.push({ text: "جزئیات بیشتر محصولات", emoji: "📋" })
+      suggestions.push({ text: "نحوه سفارش چگونه است؟", emoji: "🛒" })
+    } else if (lastAssistant.includes("خدمات") || lastAssistant.includes("پشتیبانی")) {
+      suggestions.push({ text: "ساعات کاری چیست؟", emoji: "🕐" })
+      suggestions.push({ text: "راه‌های تماس", emoji: "📞" })
+    } else {
+      suggestions.push({ text: "محصولات شما چیست؟", emoji: "🛍️" })
+      suggestions.push({ text: "خدمات ارائه شده", emoji: "🔧" })
     }
+
+    // Always add a general question
+    suggestions.push({ text: "درباره شما بیشتر بگویید", emoji: "ℹ️" })
+
+    // Return exactly 3 unique suggestions
+    return suggestions.slice(0, 3)
   } catch (error) {
-    console.error("Failed to fetch next suggestions:", error)
+    console.error("Failed to get next suggestions:", error)
+    return [
+      { text: "سوال دیگری دارم", emoji: "❓" },
+      { text: "راهنمایی بیشتر", emoji: "💡" },
+      { text: "تماس با پشتیبانی", emoji: "📞" },
+    ]
   }
-  return []
 }
 
 export async function POST(req: NextRequest) {
@@ -166,81 +117,57 @@ export async function POST(req: NextRequest) {
   console.log(`[${timestamp}] [api/chat] Request received`)
 
   try {
-    if (!KEY) {
-      console.error(`[${timestamp}] [api/chat] CRITICAL: DEEPSEEK_API_KEY not found in environment`)
+    const body = await req.json().catch(() => ({}))
+    const { messages = [], chatbotId, clientId } = body || {}
+
+    console.log(`[${timestamp}] [api/chat] chatbotId: ${chatbotId}, messages: ${messages.length}`)
+
+    if (!DEEPSEEK_API_KEY || DEEPSEEK_API_KEY === "") {
+      console.error(`[${timestamp}] [api/chat] Missing DeepSeek API key`)
       return NextResponse.json(
-        {
-          error: "missing-deepseek-key",
-          message: "کلید API یافت نشد. لطفاً با پشتیبانی تماس بگیرید.",
-        },
+        { error: "missing-api-key", message: "تنظیمات چت‌بات ناقص است. لطفاً با پشتیبانی تماس بگیرید." },
         { status: 500 },
       )
     }
 
-    console.log(`[${timestamp}] [api/chat] Environment check passed - API key exists`)
-    console.log(`[${timestamp}] [api/chat] Using model: ${MODEL}, Base URL: ${BASE}`)
-
-    const body = await req.json().catch(() => ({}))
-    const { messages = [], chatbotId } = body || {}
-
-    console.log(
-      `[${timestamp}] [api/chat] Request body parsed - chatbotId: ${chatbotId}, messages count: ${messages.length}`,
-    )
-
-    const bot = chatbotId ? await getChatbotById(Number(chatbotId)) : null
-    if (!bot) {
-      console.error(`[${timestamp}] [api/chat] Chatbot not found for ID: ${chatbotId}`)
-      return NextResponse.json(
-        {
-          error: "chatbot-not-found",
-          message: "چت‌بات مورد نظر یافت نشد.",
-        },
-        { status: 404 },
-      )
+    const chatbot = chatbotId ? await getChatbot(Number(chatbotId)) : null
+    if (!chatbot) {
+      console.error(`[${timestamp}] [api/chat] Chatbot not found: ${chatbotId}`)
+      return NextResponse.json({ error: "chatbot-not-found", message: "چت‌بات یافت نشد." }, { status: 404 })
     }
 
-    console.log(`[${timestamp}] [api/chat] Chatbot found: ${bot.name}`)
+    console.log(`[${timestamp}] [api/chat] Chatbot found: ${chatbot.name}`)
 
-    const [kb, productKnowledge] = await Promise.all([
-      fetchKB(bot.knowledge_base_url, bot.knowledge_base_text),
-      getProductKnowledge(chatbotId),
-    ])
-
-    console.log(`[${timestamp}] [api/chat] Knowledge base loaded: ${kb ? kb.length : 0} characters`)
+    const kb = await composeKnowledgeBase(chatbotId)
     console.log(
-      `[${timestamp}] [api/chat] Product knowledge loaded: ${productKnowledge ? productKnowledge.length : 0} characters`,
+      `[${timestamp}] [api/chat] KB assembled - policy: ${kb.kb_policy_text.length}, url: ${kb.kb_url_excerpt.length}, products: ${kb.kb_products.length}`,
     )
 
-    if (bot.knowledge_base_url) {
-      console.log(
-        `[${timestamp}] [api/chat] KB source: URL (${bot.knowledge_base_url}) + text (${bot.knowledge_base_text?.length || 0} chars)`,
-      )
-    } else if (bot.knowledge_base_text) {
-      console.log(`[${timestamp}] [api/chat] KB source: text only (${bot.knowledge_base_text.length} chars)`)
-    } else {
-      console.log(`[${timestamp}] [api/chat] KB source: none provided`)
-    }
+    const memory = clientId ? await getChatbotMemory(chatbotId, clientId) : null
+    console.log(`[${timestamp}] [api/chat] Memory loaded: ${memory ? "yes" : "no"}`)
 
-    const combinedKnowledge = [kb, productKnowledge].filter(Boolean).join("\n\n")
-
-    const system = [
-      `You are ${bot.name || "Chat"}, a helpful Persian assistant for this business.`,
+    const systemPrompt = [
+      `You are ${chatbot.name}, a helpful Persian assistant for this business.`,
       ``,
-      combinedKnowledge
-        ? `=== KNOWLEDGE BASE ===\n${combinedKnowledge}\n=== END OF KNOWLEDGE BASE ===`
-        : `=== NO SPECIFIC KNOWLEDGE BASE PROVIDED ===`,
+      `=== KNOWLEDGE BASE ===`,
+      kb.kb_policy_text ? `BUSINESS POLICY & INFO:\n${kb.kb_policy_text}\n` : "",
+      kb.kb_url_excerpt ? `WEBSITE CONTENT:\n${kb.kb_url_excerpt}\n` : "",
+      kb.kb_products.length > 0
+        ? `PRODUCTS:\n${kb.kb_products
+            .map((p) => `- ${p.name}: ${p.description} (قیمت: ${p.price ? `${p.price} تومان` : "موجود نیست"})`)
+            .join("\n")}\n`
+        : "",
+      `=== END KNOWLEDGE BASE ===`,
       ``,
-      bot.store_url ? `Store Website: ${bot.store_url}` : "",
+      memory ? `CONVERSATION CONTEXT: ${memory}` : "",
       ``,
-      `RESPONSE GUIDELINES:`,
-      `1. Answer in Persian (فارسی) in a helpful and friendly manner`,
-      `2. When you have relevant information in the Knowledge Base above, use it to provide detailed answers`,
-      `3. For basic greetings, general questions, or when helping users navigate, you can respond naturally`,
-      `4. When discussing specific products or services, prioritize information from the Knowledge Base`,
-      `5. If asked about specific details not in the Knowledge Base, politely say you don't have that specific information and suggest contacting support`,
-      `6. Be conversational and helpful - you're here to assist customers`,
-      `7. When recommending products, provide details from the product knowledge when available`,
-      `8. For questions completely outside your business scope, politely redirect to relevant topics`,
+      `STRICT RESPONSE RULES:`,
+      `1. Answer ONLY using information from the Knowledge Base above`,
+      `2. If information is not in the Knowledge Base, respond briefly: "این اطلاعات در دانش من موجود نیست."`,
+      `3. Always respond in Persian (فارسی)`,
+      `4. For basic greetings, respond naturally but stay focused on business topics`,
+      `5. Never fabricate prices, links, or product details not in the KB`,
+      `6. Keep responses concise and helpful`,
     ]
       .filter(Boolean)
       .join("\n")
@@ -248,69 +175,108 @@ export async function POST(req: NextRequest) {
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop()?.content || ""
 
     try {
-      console.log(`[${timestamp}] [api/chat] Attempting primary streaming with AI SDK`)
+      console.log(`[${timestamp}] [api/chat] Starting DeepSeek streaming`)
+      console.log(`[${timestamp}] [api/chat] Using model: ${DEEPSEEK_MODEL}`)
+      console.log(`[${timestamp}] [api/chat] System prompt length: ${systemPrompt.length}`)
 
       const result = await streamText({
-        model: openai(MODEL),
-        system,
-        messages: toOpenAIChatMessages(messages),
+        model: deepseek(DEEPSEEK_MODEL),
+        system: systemPrompt,
+        messages: messages.map((m: any) => ({ role: m.role, content: String(m.content || "") })),
+        maxTokens: 1500,
+        temperature: 0.7,
+        maxRetries: 1,
       })
-
-      console.log(`[${timestamp}] [api/chat] AI SDK streaming initiated successfully`)
 
       const stream = new ReadableStream({
         async start(controller) {
           let fullResponse = ""
-          let hasContent = false
+          let tokenCount = 0
           const reader = result.textStream.getReader()
 
+          const timeoutId = setTimeout(() => {
+            console.error(`[${timestamp}] [api/chat] Stream timeout after 30s`)
+            if (tokenCount === 0) {
+              const fallbackText = "زمان انتظار تمام شد. لطفاً دوباره تلاش کنید."
+              controller.enqueue(new TextEncoder().encode(fallbackText))
+              fullResponse = fallbackText
+            }
+            controller.close()
+          }, 30000)
+
           try {
+            console.log(`[${timestamp}] [api/chat] Starting to read DeepSeek stream`)
             while (true) {
               const { done, value } = await reader.read()
-              if (done) break
+              if (done) {
+                console.log(`[${timestamp}] [api/chat] Stream reading completed`)
+                break
+              }
 
               if (value && value.length > 0) {
                 fullResponse += value
-                hasContent = true
-                // Immediately flush each chunk to prevent buffering
+                tokenCount++
                 controller.enqueue(new TextEncoder().encode(value))
+                console.log(`[${timestamp}] [api/chat] Token ${tokenCount}: "${value}" (${value.length} chars)`)
               }
             }
 
+            clearTimeout(timeoutId)
             console.log(
-              `[${timestamp}] [api/chat] Primary streaming completed, response length: ${fullResponse.length}, hasContent: ${hasContent}`,
+              `[${timestamp}] [api/chat] Stage 1 completed: ${fullResponse.length} chars, ${tokenCount} tokens`,
             )
 
-            if (!hasContent || fullResponse.trim().length === 0) {
-              console.error(`[${timestamp}] [api/chat] Empty response from AI SDK, providing fallback`)
+            if (tokenCount === 0) {
+              console.error(`[${timestamp}] [api/chat] CRITICAL: Zero tokens received from DeepSeek`)
               const fallbackText = "متأسفانه پاسخی دریافت نشد. لطفاً دوباره تلاش کنید."
               controller.enqueue(new TextEncoder().encode(fallbackText))
               fullResponse = fallbackText
             }
 
-            const [products, nextSuggestions] = await Promise.all([
-              getProductSuggestions(chatbotId, lastUserMessage),
-              getNextSuggestions(fullResponse, combinedKnowledge || ""),
-            ])
-
-            console.log(
-              `[${timestamp}] [api/chat] Suggestions generated - products: ${products.length}, next: ${nextSuggestions.length}`,
-            )
+            const products = await getProductSuggestions(chatbotId, lastUserMessage)
+            console.log(`[${timestamp}] [api/chat] Stage 2 completed: ${products.length} products`)
 
             if (products.length > 0) {
               const productData = `\n\nSUGGESTED_PRODUCTS: ${JSON.stringify(products)}`
               controller.enqueue(new TextEncoder().encode(productData))
             }
 
-            if (nextSuggestions.length > 0) {
-              const suggestionData = `\n\nNEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}`
-              controller.enqueue(new TextEncoder().encode(suggestionData))
+            const nextSuggestions = await getNextSuggestions(
+              fullResponse,
+              lastUserMessage,
+              kb.kb_policy_text + kb.kb_url_excerpt,
+            )
+            console.log(`[${timestamp}] [api/chat] Stage 3 completed: ${nextSuggestions.length} suggestions`)
+
+            const suggestionData = `\n\nNEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}`
+            controller.enqueue(new TextEncoder().encode(suggestionData))
+
+            try {
+              await saveMessage({
+                chatbot_id: chatbotId,
+                user_message: lastUserMessage,
+                bot_response: fullResponse,
+                user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || null,
+                user_agent: req.headers.get("user-agent") || null,
+              })
+
+              if (clientId && messages.length > 4) {
+                const recentMessages = messages
+                  .slice(-6)
+                  .map((m: any) => `${m.role}: ${m.content}`)
+                  .join("\n")
+                const newMemory = `Recent conversation:\n${recentMessages}\nLast response: ${fullResponse.substring(0, 200)}`
+                await setChatbotMemory(chatbotId, clientId, newMemory)
+              }
+            } catch (dbError) {
+              console.error(`[${timestamp}] [api/chat] Database save error:`, dbError)
             }
 
             controller.close()
           } catch (error) {
+            clearTimeout(timeoutId)
             console.error(`[${timestamp}] [api/chat] Stream processing error:`, error)
-            if (!hasContent) {
+            if (tokenCount === 0) {
               const errorText = "خطا در دریافت پاسخ. لطفاً دوباره تلاش کنید."
               controller.enqueue(new TextEncoder().encode(errorText))
             }
@@ -326,214 +292,30 @@ export async function POST(req: NextRequest) {
           Connection: "keep-alive",
         },
       })
-    } catch (err: any) {
-      console.error(`[${timestamp}] [api/chat] Primary streaming failed, attempting fallback`)
-      console.error(`[${timestamp}] [api/chat] Error details:`, {
-        status: err?.status,
-        message: err?.message,
-        responseBody: err?.responseBody,
-        stack: err?.stack?.split("\n").slice(0, 3).join("\n"),
+    } catch (streamError: any) {
+      console.error(`[${timestamp}] [api/chat] DeepSeek connection failed:`, streamError)
+      console.error(`[${timestamp}] [api/chat] Connection details:`, {
+        baseURL: DEEPSEEK_BASE_URL,
+        model: DEEPSEEK_MODEL,
+        hasApiKey: !!DEEPSEEK_API_KEY,
+        keyPrefix: DEEPSEEK_API_KEY.substring(0, 10),
+        errorMessage: streamError.message,
       })
-    }
 
-    const url = `${BASE.replace(/\/$/, "")}/v1/chat/completions`
-    const payload = {
-      model: MODEL,
-      stream: true,
-      messages: [{ role: "system", content: system }, ...toOpenAIChatMessages(messages)],
-      max_tokens: 2000,
-      temperature: 0.7,
-    }
-
-    console.log(`[${timestamp}] [api/chat] Attempting fallback streaming to: ${url}`)
-
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${KEY}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+      return NextResponse.json(
+        {
+          error: "deepseek-connection-failed",
+          message: "خطا در ارتباط با هوش مصنوعی. لطفاً دوباره تلاش کنید.",
         },
-        body: JSON.stringify(payload),
-      })
-
-      console.log(`[${timestamp}] [api/chat] Fallback response status: ${res.status} ${res.statusText}`)
-
-      if (!res.ok || !res.body) {
-        let detail = ""
-        try {
-          detail = await res.text()
-        } catch {}
-        console.error(`[${timestamp}] [api/chat] Fallback streaming failed:`, { status: res.status, detail })
-        throw new Error(`raw-stream-bad-response: ${res.status} ${detail}`)
-      }
-
-      console.log(`[${timestamp}] [api/chat] Fallback streaming initiated successfully`)
-
-      const stream = new ReadableStream({
-        async start(controller) {
-          const reader = res.body!.getReader()
-          const decoder = new TextDecoder()
-          let buffer = ""
-          let fullResponse = ""
-          let hasContent = false
-
-          try {
-            while (true) {
-              const { value, done } = await reader.read()
-              if (done) {
-                console.log(
-                  `[${timestamp}] [api/chat] Fallback streaming completed, response length: ${fullResponse.length}, hasContent: ${hasContent}`,
-                )
-
-                if (!hasContent || fullResponse.trim().length === 0) {
-                  console.error(`[${timestamp}] [api/chat] Empty response from fallback streaming`)
-                  const fallbackText = "متأسفانه پاسخی دریافت نشد. لطفاً دوباره تلاش کنید."
-                  controller.enqueue(new TextEncoder().encode(fallbackText))
-                  fullResponse = fallbackText
-                }
-
-                const [products, nextSuggestions] = await Promise.all([
-                  getProductSuggestions(chatbotId, lastUserMessage),
-                  getNextSuggestions(fullResponse, combinedKnowledge || ""),
-                ])
-
-                if (products.length > 0) {
-                  const productData = `\n\nSUGGESTED_PRODUCTS: ${JSON.stringify(products)}`
-                  controller.enqueue(new TextEncoder().encode(productData))
-                }
-
-                if (nextSuggestions.length > 0) {
-                  const suggestionData = `\n\nNEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}`
-                  controller.enqueue(new TextEncoder().encode(suggestionData))
-                }
-
-                controller.close()
-                return
-              }
-
-              buffer += decoder.decode(value, { stream: true })
-
-              const lines = buffer.split("\n")
-              buffer = lines.pop() || ""
-              for (const line of lines) {
-                const trimmed = line.trim()
-                if (!trimmed.startsWith("data:")) continue
-                const data = trimmed.slice(5).trim()
-                if (data === "[DONE]") continue
-                try {
-                  const json = JSON.parse(data)
-                  const delta = json?.choices?.[0]?.delta?.content || ""
-                  if (delta) {
-                    fullResponse += delta
-                    hasContent = true
-                    controller.enqueue(new TextEncoder().encode(delta))
-                  }
-                } catch {}
-              }
-            }
-          } catch (streamError) {
-            console.error(`[${timestamp}] [api/chat] Fallback stream processing error:`, streamError)
-            if (!hasContent) {
-              const errorText = "خطا در دریافت پاسخ. لطفاً دوباره تلاش کنید."
-              controller.enqueue(new TextEncoder().encode(errorText))
-            }
-            controller.close()
-          }
-        },
-      })
-
-      return new Response(stream, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      })
-    } catch (e2: any) {
-      console.error(
-        `[${timestamp}] [api/chat] Fallback streaming failed, attempting non-streaming fallback:`,
-        e2?.message || e2,
+        { status: 503 },
       )
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
-
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: MODEL,
-            stream: false,
-            messages: [{ role: "system", content: system }, ...toOpenAIChatMessages(messages)],
-            max_tokens: 2000,
-            temperature: 0.7,
-          }),
-        })
-
-        clearTimeout(timeoutId)
-        console.log(`[${timestamp}] [api/chat] Non-streaming fallback response: ${res.status} ${res.statusText}`)
-
-        let text = ""
-        if (res.ok) {
-          const j = await res.json().catch(() => null)
-          text = j?.choices?.[0]?.message?.content || ""
-
-          if (text && text.trim().length > 0) {
-            console.log(`[${timestamp}] [api/chat] Non-streaming response received, length: ${text.length}`)
-
-            const [products, nextSuggestions] = await Promise.all([
-              getProductSuggestions(chatbotId, lastUserMessage),
-              getNextSuggestions(text, combinedKnowledge || ""),
-            ])
-
-            if (products.length > 0) {
-              text += `\n\nSUGGESTED_PRODUCTS: ${JSON.stringify(products)}`
-            }
-
-            if (nextSuggestions.length > 0) {
-              text += `\n\nNEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}`
-            }
-          } else {
-            console.error(`[${timestamp}] [api/chat] Empty response from DeepSeek API`)
-            text = "متأسفانه پاسخی دریافت نشد. لطفاً دوباره تلاش کنید."
-          }
-        } else {
-          console.error(`[${timestamp}] [api/chat] Non-streaming fallback failed with status: ${res.status}`)
-          text = `خطای اتصال به DeepSeek (${res.status}). لطفاً دوباره تلاش کنید.`
-        }
-
-        return NextResponse.json({ textFallback: text }, { status: 200 })
-      } catch (timeoutError) {
-        clearTimeout(timeoutId)
-        console.error(`[${timestamp}] [api/chat] Non-streaming fallback timeout or error:`, timeoutError)
-        return NextResponse.json(
-          {
-            textFallback: "زمان انتظار تمام شد. لطفاً دوباره تلاش کنید.",
-          },
-          { status: 200 },
-        )
-      }
     }
-  } catch (err: any) {
-    console.error(`[${timestamp}] [api/chat] FATAL ERROR:`, {
-      message: err?.message,
-      stack: err?.stack?.split("\n").slice(0, 5).join("\n"),
-      timestamp,
-    })
-
+  } catch (error: any) {
+    console.error(`[${timestamp}] [api/chat] FATAL ERROR:`, error)
     return NextResponse.json(
       {
-        error: "chat-failed",
+        error: "system-error",
         message: "خطای سیستمی رخ داده است. لطفاً دوباره تلاش کنید.",
-        detail: String(err?.message || err),
       },
       { status: 500 },
     )

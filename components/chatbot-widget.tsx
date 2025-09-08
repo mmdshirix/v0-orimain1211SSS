@@ -242,12 +242,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
       className="w-full m-0 p-0"
       style={{
         overflow: "hidden",
-        margin: "0 !important",
-        padding: "0 !important",
-        lineHeight: "1 !important",
-        verticalAlign: "top !important",
-        border: "none !important",
-        outline: "none !important",
         ["--ts-primary" as any]: chatbot.primary_color,
         ["--ts-fg" as any]: chatbot.text_color,
         ["--ts-bg" as any]: chatbot.background_color,
@@ -259,11 +253,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
         style={{
           gridTemplateRows: "64px 1fr 140px",
           overflow: "hidden",
-          margin: "0 !important",
-          padding: "0 !important",
-          lineHeight: "1 !important",
-          verticalAlign: "top !important",
-          border: "none !important",
           height: "100%",
         }}
         dir="rtl"
@@ -276,9 +265,6 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
             minHeight: "64px",
             maxHeight: "64px",
             overflow: "hidden",
-            margin: "0 !important",
-            padding: "16px !important",
-            boxSizing: "border-box !important",
           }}
         >
           <div className="flex items-center justify-between">
@@ -305,7 +291,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                   </svg>
                 </button>
                 {showMenu && (
-                  <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                  <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-[99999]">
                     <div className="py-2">
                       <button
                         onClick={handleClearHistory}
@@ -370,15 +356,11 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
 
         <section
           id="ts-body"
-          className="overflow-y-auto px-4 py-3 m-0 bg-gray-50 flex-1"
+          className="overflow-y-auto px-4 py-4 m-0 bg-gray-50 flex-1"
           style={{
             overflowY: "auto",
             overflowX: "hidden",
             height: "100%",
-            margin: "0 !important",
-            padding: "16px !important",
-            boxSizing: "border-box !important",
-            backgroundColor: "#f9fafb !important",
           }}
         >
           {activeTab === "ai" && (
@@ -394,10 +376,10 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                               className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
                               style={{ backgroundColor: chatbot.primary_color }}
                             >
-                              <span className="text-sm text-white">💬</span>
+                              <span className="text-lg">💬</span>
                             </div>
                             <div className="flex-1">
-                              <div className="bg-white rounded-2xl rounded-tl-md p-4 text-sm shadow-sm border border-gray-100">
+                              <div className="bg-white rounded-2xl rounded-tl-md px-[18px] py-4 text-sm shadow-sm border border-gray-100">
                                 <div className="text-gray-800 leading-relaxed">
                                   {linkifyText(
                                     message.content
@@ -410,7 +392,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                               <div className="flex items-center gap-2 mt-2 px-1">
                                 <button
                                   onClick={() => handleCopy(message.content)}
-                                  className="p-1.5 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-200"
+                                  className="p-2 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all duration-200"
                                   title="کپی"
                                 >
                                   <svg
@@ -428,7 +410,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                                   </svg>
                                 </button>
                                 <button
-                                  className="p-1.5 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-all duration-200"
+                                  className="p-2 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-all duration-200"
                                   title="پسندیدن"
                                 >
                                   <svg
@@ -446,7 +428,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                                   </svg>
                                 </button>
                                 <button
-                                  className="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200"
+                                  className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200"
                                   title="نپسندیدن"
                                 >
                                   <svg
@@ -470,7 +452,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                         ) : (
                           <div className="flex gap-3 max-w-[85%] justify-end">
                             <div
-                              className="text-white rounded-2xl rounded-tr-md p-4 text-sm shadow-sm"
+                              className="text-white rounded-2xl rounded-tr-md px-4 py-[14px] text-sm shadow-sm"
                               style={{ backgroundColor: chatbot.primary_color }}
                             >
                               <div className="leading-relaxed">{linkifyText(message.content)}</div>
@@ -496,7 +478,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                       <button
                         key={faq.id}
                         onClick={() => handleFAQClick(faq)}
-                        className="h-auto px-4 py-3 text-right justify-start bg-white border-0 rounded-2xl text-sm font-medium text-gray-700 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                        className="min-h-[50px] px-4 py-3 text-right justify-start bg-white border-0 rounded-2xl text-sm font-medium text-gray-700 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                         style={{
                           boxShadow: `0 2px 8px ${chatbot.primary_color}25, 0 1px 3px ${chatbot.primary_color}15`,
                         }}
@@ -552,7 +534,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                           className="h-28 w-full object-cover"
                         />
                       )}
-                      <div className="p-2">
+                      <div className="p-3">
                         <div className="text-sm font-medium line-clamp-2 text-gray-900">{product.name}</div>
                         <div className="text-xs text-gray-600 line-clamp-2 mt-1">{product.description}</div>
                         <div className="mt-2 flex items-center justify-between">
@@ -648,17 +630,12 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
         </section>
 
         <footer
-          className="px-3 pt-2 pb-3 m-0 bg-white border-t border-gray-200 flex-shrink-0"
+          className="px-3 pt-2 pb-1 bg-white border-t border-gray-200 flex-shrink-0"
           style={{
             height: "140px",
             minHeight: "140px",
             maxHeight: "140px",
             overflow: "hidden",
-            margin: "0 !important",
-            padding: "8px 12px 12px 12px !important",
-            boxSizing: "border-box !important",
-            backgroundColor: "white !important",
-            borderTop: "1px solid #e5e7eb !important",
           }}
         >
           <div className="flex">
@@ -722,7 +699,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
           </div>
 
           {activeTab === "ai" && (
-            <div className="pt-4 bg-white relative">
+            <div className="pt-3 pb-1 bg-white relative">
               <form onSubmit={handleFormSubmit} className="flex items-center gap-3">
                 <div className="flex-1 relative">
                   <textarea
@@ -730,9 +707,9 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="پیام خود را بنویسید..."
-                    className="w-full rounded-full px-6 py-4 pr-14 pl-14 outline-none resize-none border-2 border-gray-200 bg-gray-50 text-base transition-all duration-200 min-h-[56px] text-black"
+                    className="w-full rounded-full px-6 py-4 pr-14 pl-14 outline-none resize-none border-2 border-gray-200 bg-gray-50 text-sm transition-all duration-200 min-h-[56px] text-black"
                     style={{
-                      fontSize: "16px",
+                      fontSize: "14px",
                       lineHeight: "1.5",
                       color: "#000000",
                       borderColor: showEmojiPicker ? chatbot.primary_color : undefined,
@@ -780,7 +757,7 @@ export default function ChatbotWidget({ chatbot }: ChatbotWidgetProps) {
                 </div>
               )}
 
-              <div className="text-center mt-3 pb-2">
+              <div className="text-center mt-1 pb-1">
                 <a
                   href="https://talksell.ir/"
                   target="_blank"

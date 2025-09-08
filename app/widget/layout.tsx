@@ -15,16 +15,37 @@ export default function WidgetLayout({
         <style
           dangerouslySetInnerHTML={{
             __html: `
-            /* Enhanced iframe reset to prevent white space and ensure proper height */
-            html, body, #__next { 
-              margin: 0 !important; 
+            /* Removed aggressive global resets, keeping only html/body resets */
+            html { 
+              margin: 0; 
+              padding: 0; 
+              height: 100%; 
+              min-height: 0; 
+              background: transparent; 
+              font-size: 16px;
+              box-sizing: border-box;
+            }
+            
+            body { 
+              margin: 0; 
+              padding: 0; 
+              height: 100%; 
+              min-height: 0; 
+              background: transparent; 
+              line-height: 1.6;
+              font-weight: 400;
+              font-family: system-ui, -apple-system, sans-serif;
+              overflow: hidden;
+              box-sizing: border-box;
+            }
+            
+            /* Override min-h-screen class specifically for widget path */
+            main.min-h-screen { 
+              min-height: 0 !important; 
+              height: auto !important; 
+              max-height: 100% !important; 
               padding: 0 !important; 
-              width: 100% !important;
-              box-sizing: border-box !important;
-              overflow: hidden !important;
-              position: relative !important;
-              line-height: 1 !important;
-              font-size: 14px !important;
+              margin: 0 !important; 
             }
             
             /* Desktop uses fixed 640px height - single source of truth */
@@ -46,36 +67,16 @@ export default function WidgetLayout({
               }
             }
             
-            * { 
-              box-sizing: border-box !important; 
-            }
-            body { 
-              background: white !important; 
-              font-family: system-ui, -apple-system, sans-serif !important;
-              overflow: hidden !important;
-              display: block !important;
-              margin: 0 !important;
-              padding: 0 !important;
-            }
-            /* Enhanced isolation to prevent CSS inheritance from host sites */
-            :root { 
-              padding: 0 !important; 
-              margin: 0 !important;
-              line-height: 1 !important;
-              font-size: 14px !important;
-              vertical-align: baseline !important;
-            }
-            /* Force exact height matching iframe loader - single source of truth */
+            /* Removed * selector global resets, keeping only essential resets */
             #ts-root {
-              overflow: hidden !important;
-              display: block !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              position: relative !important;
-              vertical-align: top !important;
-              line-height: 1 !important;
-              border: none !important;
-              outline: none !important;
+              overflow: hidden;
+              display: block;
+              margin: 0;
+              padding: 0;
+              position: relative;
+              vertical-align: top;
+              border: none;
+              outline: none;
             }
             
             /* Desktop: exact 640px height matching loader */
@@ -96,16 +97,6 @@ export default function WidgetLayout({
                 min-height: 100vh !important;
                 width: 100vw !important;
               }
-            }
-            
-            /* Additional reset for common host site interference */
-            #ts-root * {
-              margin: 0 !important;
-              padding: 0 !important;
-              border: 0 !important;
-              font-size: inherit !important;
-              vertical-align: baseline !important;
-              line-height: inherit !important;
             }
           `,
           }}

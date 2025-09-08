@@ -134,7 +134,7 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
       const response = await fetch("/api/knowledge-base/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), chatbotId: chatbot.id }),
       })
 
       const data = await response.json()
@@ -149,7 +149,7 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
         })
         toast({
           title: "✅ موفقیت",
-          description: `محتوای ${data.contentLength || 0} کاراکتر از URL بارگذاری شد`,
+          description: `محتوای ${data.contentLength || 0} کاراکتر از URL بارگذاری شد${data.cached ? " (کش شده)" : ""}`,
         })
       } else {
         setKbStatus({
@@ -632,9 +632,10 @@ export default function ChatbotSettingsForm({ chatbot }: ChatbotSettingsFormProp
                       <h4 className="font-medium text-blue-900 mb-2">نکات مهم:</h4>
                       <ul className="text-sm text-blue-800 space-y-1">
                         <li>• محتوای URL و متن با هم ترکیب می‌شوند</li>
-                        <li>• محتوا هر ۳۰ دقیقه به‌روزرسانی می‌شود</li>
+                        <li>• محتوا هر ۶ ساعت به‌روزرسانی می‌شود</li>
                         <li>• حداکثر ۱۲۰۰۰ کاراکتر پردازش می‌شود</li>
                         <li>• محتوای HTML به‌طور خودکار تمیز می‌شود</li>
+                        <li>• محتوا در کش ذخیره می‌شود برای عملکرد بهتر</li>
                       </ul>
                     </div>
                   </div>
